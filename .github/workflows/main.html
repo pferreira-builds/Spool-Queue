@@ -1,0 +1,1133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>html{color-scheme:light dark}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Spool Queue</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --paper:#EFF2F0; --surface:#FFFFFF; --surface-2:#F7F9F8;
+  --ink:#141A19; --ink-2:#3C4947; --muted:#6C7A77; --line:#DAE1DE; --line-2:#C6D0CC;
+  --accent:#DC5410; --accent-soft:#FDEDE4;
+  --teal:#0E7A72; --ok:#2C7A4F; --warn:#A8710C; --crit:#C0362B;
+  --crit-soft:#FBE9E7; --warn-soft:#FBF2E0;
+  --shadow:0 1px 2px rgba(20,26,25,.06), 0 8px 24px -16px rgba(20,26,25,.28);
+  --r:10px;
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#101413; --surface:#171D1C; --surface-2:#1D2523;
+    --ink:#E9EEEC; --ink-2:#BCC7C4; --muted:#8B9A96; --line:#28312F; --line-2:#36423F;
+    --accent:#FF7A3E; --accent-soft:#332014;
+    --teal:#3FB3A6; --ok:#5CB683; --warn:#D9A441; --crit:#F0705F;
+    --crit-soft:#331A17; --warn-soft:#2E2413;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#101413; --surface:#171D1C; --surface-2:#1D2523;
+  --ink:#E9EEEC; --ink-2:#BCC7C4; --muted:#8B9A96; --line:#28312F; --line-2:#36423F;
+  --accent:#FF7A3E; --accent-soft:#332014;
+  --teal:#3FB3A6; --ok:#5CB683; --warn:#D9A441; --crit:#F0705F;
+  --crit-soft:#331A17; --warn-soft:#2E2413;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  font-size:14px; line-height:1.5; margin:0; padding:0 0 64px;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{font-family:"Archivo", "IBM Plex Sans", sans-serif; margin:0; text-wrap:balance; letter-spacing:-.02em}
+button{font:inherit; color:inherit}
+input,select,textarea{font:inherit; color:inherit}
+.mono{font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums}
+.wrap{max-width:1320px; margin:0 auto; padding:0 22px}
+
+/* ── header ─────────────────────────────────────────── */
+.top{border-bottom:1px solid var(--line); background:var(--surface); position:sticky; top:0; z-index:30}
+.topin{display:flex; align-items:center; gap:14px; padding:14px 0; flex-wrap:wrap}
+.brand{display:flex; align-items:baseline; gap:10px}
+.brand h1{font-size:21px; font-weight:800}
+.brand .sub{color:var(--muted); font-size:11.5px; letter-spacing:.1em; text-transform:uppercase}
+.spacer{flex:1}
+.btn{
+  border:1px solid var(--line-2); background:var(--surface); border-radius:8px;
+  padding:7px 13px; cursor:pointer; font-size:13px; font-weight:500;
+  display:inline-flex; align-items:center; gap:7px; transition:border-color .12s, background .12s;
+}
+.btn:hover{border-color:var(--muted); background:var(--surface-2)}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+.btn.primary:hover{filter:brightness(1.07); background:var(--accent)}
+.btn.ghost{border-color:transparent; background:transparent; color:var(--muted)}
+.btn.ghost:hover{color:var(--ink); background:var(--surface-2)}
+.btn.danger{border-color:var(--crit); color:var(--crit); background:transparent}
+.btn:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.status-dot{width:7px; height:7px; border-radius:50%; background:var(--ok); display:inline-block}
+.status-dot.local{background:var(--warn)}
+.selector{border:1px solid var(--line-2); background:var(--surface); border-radius:8px; padding:7px 9px; font-size:13px; max-width:200px}
+
+/* ── stat strip ─────────────────────────────────────── */
+.strip{display:flex; gap:0; border:1px solid var(--line); border-radius:var(--r); background:var(--surface); overflow:hidden; margin:22px 0 18px; flex-wrap:wrap}
+.stat{padding:13px 18px; flex:1; min-width:140px; border-right:1px solid var(--line)}
+.stat:last-child{border-right:0}
+.stat .k{font-size:10.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--muted)}
+.stat .v{font-family:"Archivo",sans-serif; font-size:21px; font-weight:700; margin-top:3px; font-variant-numeric:tabular-nums}
+.stat .v small{font-size:12px; font-weight:500; color:var(--muted); font-family:"IBM Plex Sans",sans-serif}
+
+/* ── alerts ─────────────────────────────────────────── */
+.alerts{display:flex; flex-direction:column; gap:8px; margin-bottom:20px}
+.alert{display:flex; gap:11px; align-items:flex-start; padding:10px 13px; border-radius:8px; font-size:13px; border:1px solid}
+.alert.crit{background:var(--crit-soft); border-color:var(--crit); color:var(--ink)}
+.alert.warn{background:var(--warn-soft); border-color:var(--warn); color:var(--ink)}
+.alert b{font-weight:600}
+.alert .mk{font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:11px; padding-top:1px}
+.alert.crit .mk{color:var(--crit)} .alert.warn .mk{color:var(--warn)}
+.alert .lnk{color:inherit; text-decoration:underline; text-underline-offset:2px; cursor:pointer; background:none; border:0; padding:0; font-size:13px}
+
+/* ── section head ───────────────────────────────────── */
+.shead{display:flex; align-items:center; gap:14px; margin:26px 0 12px; flex-wrap:wrap}
+.shead h2{font-size:13px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); font-weight:600}
+.shead .rule{flex:1; height:1px; background:var(--line); min-width:20px}
+
+/* ── calendar ───────────────────────────────────────── */
+.cal{display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px}
+@media(max-width:1050px){.cal{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:680px){.cal{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.day{background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:10px 10px 11px; display:flex; flex-direction:column; gap:8px; min-height:126px}
+.day.today{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent)}
+.day.weekend{background:var(--surface-2)}
+.day.over{border-color:var(--crit); box-shadow:0 0 0 1px var(--crit)}
+.dhead{display:flex; align-items:baseline; justify-content:space-between; gap:6px}
+.dhead .dow{font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.dhead .num{font-family:"Archivo",sans-serif; font-weight:700; font-size:17px}
+.dhead .today-tag{font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--accent); font-weight:600}
+.load{display:flex; flex-direction:column; gap:3px}
+.loadrow{display:flex; align-items:center; gap:6px; font-size:10.5px; color:var(--muted)}
+.bar{flex:1; height:5px; border-radius:3px; background:var(--line); overflow:hidden; position:relative}
+.bar span{display:block; height:100%; border-radius:3px}
+.bar.over span{background:var(--crit) !important}
+.loadrow .h{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; min-width:56px; text-align:right; white-space:nowrap}
+.lines{display:flex; flex-direction:column; gap:7px}
+.lines:empty{display:none}
+.lrow{display:grid; grid-template-columns:3px minmax(0,1.5fr) 92px auto 28px; gap:8px; align-items:center}
+.lrow .lsw{width:3px; height:24px; border-radius:2px}
+.lrow select,.lrow input{border:1px solid var(--line-2); background:var(--surface); border-radius:7px; padding:6px 8px; width:100%; min-width:0}
+.lrow .lunit{font-size:11px; color:var(--muted); white-space:nowrap}
+.lineadd{display:flex; gap:8px; flex-wrap:wrap; margin-top:9px}
+.lineadd .btn{padding:5px 11px; font-size:12.5px}
+.fieldset{border:1px solid var(--line); border-radius:10px; padding:13px}
+.fieldset > .lg{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--accent); font-weight:600; display:block; margin-bottom:10px}
+.combo{display:flex; gap:6px}
+.combo input{flex:1 1 60px; width:auto; min-width:56px}
+.combo select{flex:0 0 68px; width:68px; border:1px solid var(--line-2); background:var(--surface); border-radius:7px; padding:7px 4px}
+.badgeline{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
+.badge{font-size:11px; padding:3px 9px; border-radius:20px; background:var(--surface); border:1px solid var(--line-2); color:var(--muted)}
+.badge b{color:var(--ink)}
+.badge.good{border-color:var(--ok); color:var(--ok)}
+.badge.bad{border-color:var(--crit); color:var(--crit)}
+.calcrow.neg .val{color:var(--crit)}
+.calcrow.sum{border-top:1px solid var(--line-2); margin-top:5px; padding-top:7px; font-weight:600}
+@media(max-width:560px){.lrow{grid-template-columns:3px minmax(0,1fr) 76px 28px} .lrow .lunit{display:none}}
+.chips{display:flex; flex-direction:column; gap:4px}
+.chip{
+  display:flex; align-items:center; gap:6px; width:100%; text-align:left; cursor:pointer;
+  border:1px solid var(--line); background:var(--surface-2); border-radius:6px;
+  padding:4px 7px; font-size:11.5px; line-height:1.35;
+}
+.chip:hover{border-color:var(--line-2)}
+.chip .swatch{width:3px; align-self:stretch; border-radius:2px; flex:none; min-height:14px}
+.chip .nm{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.chip .hh{font-family:"IBM Plex Mono",monospace; color:var(--muted); font-size:10px; white-space:nowrap}
+.chip.late{border-color:var(--crit)}
+.chip.cont{border-style:dashed}
+.chip.dim{opacity:.32}
+.due{display:flex; flex-wrap:wrap; gap:4px}
+.dueflag{font-size:10px; padding:2px 6px; border-radius:20px; border:1px solid var(--line-2); color:var(--muted); background:transparent; cursor:pointer; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.dueflag.miss{border-color:var(--crit); color:var(--crit)}
+.empty-day{font-size:11px; color:var(--muted); opacity:.6}
+
+/* ── queue ──────────────────────────────────────────── */
+.lane{background:var(--surface); border:1px solid var(--line); border-radius:var(--r); overflow:hidden; margin-bottom:12px}
+.lanehead{display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--line); background:var(--surface-2); flex-wrap:wrap}
+.lanehead .sw{width:9px; height:9px; border-radius:2px; flex:none}
+.lanehead h3{font-size:14px; font-weight:700}
+.lanehead .meta{font-size:11.5px; color:var(--muted); font-family:"IBM Plex Mono",monospace}
+.qtable{width:100%; border-collapse:collapse; font-size:13px}
+.qtable th{text-align:left; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap}
+.qtable td{padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:middle}
+.qtable tr:last-child td{border-bottom:0}
+.qtable tr.row:hover td{background:var(--surface-2)}
+.qtable tr.done-row td{opacity:.55}
+.num-in{width:42px; padding:3px 5px; border:1px solid var(--line-2); border-radius:5px; background:var(--surface); text-align:center; font-family:"IBM Plex Mono",monospace; font-size:12px}
+.mv{display:inline-flex; flex-direction:column; gap:2px; vertical-align:middle; margin-left:5px}
+.mv button{border:1px solid var(--line-2); background:var(--surface); border-radius:4px; width:20px; height:14px; line-height:1; font-size:9px; cursor:pointer; padding:0; display:grid; place-items:center; color:var(--muted)}
+.mv button:hover:not(:disabled){color:var(--ink); border-color:var(--muted)}
+.mv button:disabled{opacity:.3; cursor:not-allowed}
+.prod{font-weight:600; cursor:pointer}
+.prod:hover{color:var(--accent)}
+.client{font-size:11.5px; color:var(--muted)}
+.pill{display:inline-block; font-size:10.5px; padding:2px 8px; border-radius:20px; border:1px solid var(--line-2); color:var(--muted); white-space:nowrap}
+.pill.printing{border-color:var(--teal); color:var(--teal)}
+.pill.done{border-color:var(--ok); color:var(--ok)}
+.pill.late{border-color:var(--crit); color:var(--crit); background:var(--crit-soft)}
+.pill.pinned{border-color:var(--accent); color:var(--accent)}
+.right{text-align:right}
+.tot{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; font-weight:600}
+.tblwrap{overflow-x:auto}
+.emptystate{padding:26px; text-align:center; color:var(--muted); font-size:13px}
+
+/* ── modal ──────────────────────────────────────────── */
+.scrim{position:fixed; inset:0; background:rgba(10,14,13,.55); z-index:60; display:flex; align-items:flex-start; justify-content:center; padding:38px 16px; overflow-y:auto; backdrop-filter:blur(2px)}
+.modal{background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); width:100%; max-width:720px; overflow:hidden}
+.modal.wide{max-width:880px}
+.mhead{display:flex; align-items:center; gap:12px; padding:16px 20px; border-bottom:1px solid var(--line)}
+.mhead h2{font-size:17px; font-weight:700}
+.mbody{padding:18px 20px; display:flex; flex-direction:column; gap:16px}
+.mfoot{display:flex; gap:9px; align-items:center; padding:14px 20px; border-top:1px solid var(--line); background:var(--surface-2)}
+.grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px}
+.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:640px){.grid,.grid.two{grid-template-columns:1fr 1fr}}
+.f{display:flex; flex-direction:column; gap:5px; min-width:0}
+.f.span2{grid-column:span 2}
+.f.span3{grid-column:1/-1}
+.f label{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:600}
+.f input,.f select,.f textarea{border:1px solid var(--line-2); background:var(--surface); border-radius:7px; padding:7px 9px; width:100%}
+.f textarea{resize:vertical; min-height:76px; line-height:1.55}
+.f .hint{font-size:11px; color:var(--muted)}
+.calcbox{border:1px solid var(--line); border-radius:10px; background:var(--surface-2); padding:13px 15px}
+.calcrow{display:flex; justify-content:space-between; gap:12px; padding:4px 0; font-size:13px}
+.calcrow .lbl{color:var(--muted)}
+.calcrow .val{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums}
+.calcrow.total{border-top:1px solid var(--line-2); margin-top:6px; padding-top:8px; font-weight:700; font-size:15px}
+.calcrow.total .val{font-size:16px; color:var(--accent)}
+.calcnote{font-size:11px; color:var(--muted); margin-top:7px; line-height:1.5}
+.prow{display:grid; grid-template-columns:1.3fr .7fr .6fr .6fr auto .6fr 30px; gap:8px; align-items:center; margin-bottom:7px}
+.phead{display:grid; grid-template-columns:1.3fr .7fr .6fr .6fr auto .6fr 30px; gap:8px; font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:600; margin-bottom:5px}
+.frow{display:grid; grid-template-columns:1.6fr .8fr .6fr 30px; gap:8px; align-items:center; margin-bottom:7px}
+.fhead{display:grid; grid-template-columns:1.6fr .8fr .6fr 30px; gap:8px; font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:600; margin-bottom:5px}
+.prow input,.frow input{border:1px solid var(--line-2); background:var(--surface); border-radius:6px; padding:5px 8px; width:100%}
+.prow input[type=color],.frow input[type=color]{padding:2px; height:31px; cursor:pointer}
+.prow .chk{display:flex; align-items:center; gap:5px; font-size:11.5px; color:var(--muted); white-space:nowrap}
+.xbtn{border:1px solid var(--line-2); background:var(--surface); border-radius:6px; width:28px; height:28px; cursor:pointer; color:var(--muted); display:grid; place-items:center}
+.xbtn:hover{color:var(--crit); border-color:var(--crit)}
+.tabs{display:flex; gap:4px; border-bottom:1px solid var(--line); padding:0 20px; background:var(--surface-2)}
+.tab{border:0; background:none; padding:11px 12px; cursor:pointer; font-size:13px; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-1px; font-weight:500}
+.tab.on{color:var(--ink); border-bottom-color:var(--accent)}
+
+/* ── quote ──────────────────────────────────────────── */
+.qhead{display:flex; justify-content:space-between; align-items:flex-start; gap:20px; flex-wrap:wrap}
+.qhead .qto{font-size:12px; color:var(--muted); line-height:1.7}
+.qhead .qto b{display:block; font-size:16px; color:var(--ink); font-family:"Archivo",sans-serif; font-weight:700}
+.qtbl{width:100%; border-collapse:collapse; font-size:13px}
+.qtbl th{text-align:left; font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:600; padding:7px 8px; border-bottom:1px solid var(--line-2)}
+.qtbl td{padding:8px; border-bottom:1px solid var(--line)}
+.qtbl tfoot td{border-bottom:0; padding-top:10px; font-weight:600}
+.qterms{font-size:11.5px; color:var(--muted); line-height:1.6; border-top:1px solid var(--line); padding-top:12px}
+.quote-editable{border:1px dashed var(--line-2); border-radius:6px; padding:6px 8px; min-height:28px; font-size:13px}
+.quote-editable:focus{outline:2px solid var(--accent); outline-offset:1px}
+
+.footnote{color:var(--muted); font-size:12px; text-align:center; margin-top:34px; line-height:1.7}
+.helpbody h3{font-size:14px; margin-top:4px}
+.helpbody p{margin:6px 0 14px; color:var(--ink-2); line-height:1.65}
+.helpbody code{font-family:"IBM Plex Mono",monospace; font-size:12px; background:var(--surface-2); padding:1px 5px; border-radius:4px; border:1px solid var(--line)}
+
+@media (prefers-reduced-motion: reduce){*{transition:none !important; animation:none !important}}
+@media print{
+  body{background:#fff; padding:0}
+  body > *:not(#modal-root){display:none !important}
+  #modal-root .scrim{position:static; background:none; padding:0; display:block; backdrop-filter:none; overflow:visible}
+  #modal-root .modal{border:0; box-shadow:none; max-width:none; border-radius:0}
+  #modal-root .mfoot, #modal-root .mhead .btn, #modal-root .no-print{display:none !important}
+  #modal-root .mhead{border-bottom:1px solid #ccc}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap topin">
+    <div class="brand">
+      <h1>Spool Queue</h1>
+      <span class="sub" id="range-label">next 15 days</span>
+    </div>
+    <div class="spacer"></div>
+    <select class="selector" id="client-filter" aria-label="Filter by client"></select>
+    <button class="btn" id="btn-quote">Quote</button>
+    <span class="mono" style="font-size:11.5px;color:var(--muted);display:inline-flex;align-items:center;gap:6px">
+      <span class="status-dot" id="sync-dot"></span><span id="sync-label">connecting</span>
+    </span>
+    <button class="btn ghost" id="btn-help" title="How this works">?</button>
+    <button class="btn ghost" id="btn-theme" title="Toggle theme">◐</button>
+    <button class="btn" id="btn-settings">Settings</button>
+    <button class="btn primary" id="btn-new">+ New job</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="strip" id="strip"></div>
+  <div class="alerts" id="alerts"></div>
+
+  <div class="shead"><h2>15-day plan</h2><div class="rule"></div>
+    <span class="mono" style="font-size:11px;color:var(--muted)" id="cal-note"></span>
+  </div>
+  <div class="cal" id="cal"></div>
+
+  <div class="shead"><h2>Queue — first come, first served</h2><div class="rule"></div>
+    <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px">
+      <input type="checkbox" id="show-done"> show finished
+    </label>
+  </div>
+  <div id="queue"></div>
+
+  <p class="footnote">
+    Order sets the schedule. Move a job up or down, or type its position number.<br>
+    Pin a job to a date in its detail view when it has to run on a specific day.
+  </p>
+</main>
+
+<div id="modal-root"></div>
+
+<script>
+"use strict";
+
+/* ── model ──────────────────────────────────────────── */
+var HORIZON = 15, MAXD = 60;
+var DEFAULTS = {
+  currency: "€", laborRate: 18, wastePct: 5, marginPct: 25,
+  shopName: "", quoteTerms: "Valid 30 days. Lead time from order confirmation. Prices include material, machine time and finishing.",
+  printers: [
+    { id: "p1", name: "Printer 1", rate: 0.85, color: "#DC5410", unattended: true, startHour: 8, endHour: 20 },
+    { id: "p2", name: "Printer 2", rate: 0.85, color: "#0E7A72", unattended: true, startHour: 8, endHour: 20 }
+  ],
+  filaments: [
+    { id: "f1", name: "PLA — black", pricePerKg: 22, color: "#2B2B2B" },
+    { id: "f2", name: "PETG — natural", pricePerKg: 27, color: "#C9C2A8" }
+  ]
+};
+var settings = clone(DEFAULTS);
+var tasks = [];
+var db = null, showDone = false, clientFilter = "*";
+
+function clone(o) { return JSON.parse(JSON.stringify(o)); }
+function uid(p) { return (p || "j") + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); }
+function num(v, d) { var n = parseFloat(v); return isFinite(n) ? n : (d === undefined ? 0 : d); }
+function money(v) { return settings.currency + v.toFixed(2); }
+function hrs(v) { return (Math.round(v * 10) / 10) + "h"; }
+function clock(h) {
+  var t = ((h % 24) + 24) % 24;
+  var hh = Math.floor(t), mm = Math.round((t - hh) * 60);
+  if (mm === 60) { mm = 0; hh = (hh + 1) % 24; }
+  return String(hh).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+}
+function today() { var d = new Date(); d.setHours(0, 0, 0, 0); return d; }
+function addDays(d, n) { var x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; }
+function iso(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+function parseISO(s) { if (!s) return null; var p = String(s).split("-"); if (p.length < 3) return null; var d = new Date(+p[0], +p[1] - 1, +p[2]); d.setHours(0, 0, 0, 0); return isNaN(d.getTime()) ? null : d; }
+function dayIndexOf(s) { var d = parseISO(s); if (!d) return null; return Math.round((d - today()) / 86400000); }
+function fmtShort(d) { return d ? d.toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "—"; }
+
+function printerOf(id) { for (var i = 0; i < settings.printers.length; i++) if (settings.printers[i].id === id) return settings.printers[i]; return settings.printers[0] || { id: "?", name: "Unassigned", rate: 0, color: "#888", unattended: true, startHour: 8, endHour: 20 }; }
+function filamentOf(id) { for (var i = 0; i < settings.filaments.length; i++) if (settings.filaments[i].id === id) return settings.filaments[i]; return settings.filaments[0] || { id: "?", name: "—", pricePerKg: 0, color: "#888" }; }
+function windowOf(p) {
+  if (p.unattended !== false) return { start: 0, hours: 24, round: true };
+  var s = Math.min(23, Math.max(0, num(p.startHour, 8)));
+  var e = Math.min(24, Math.max(s + 1, num(p.endHour, 20)));
+  return { start: s, hours: e - s, round: false };
+}
+function jobHours(t) { return num(t.printHours) * Math.max(1, num(t.qty, 1)); }
+function matches(t) { return clientFilter === "*" || (t.client || "").trim() === clientFilter; }
+
+/* older jobs carried one filament and a single grams figure */
+function migrate(t) {
+  if (!Array.isArray(t.filamentLines)) {
+    t.filamentLines = [{ filamentId: t.filamentId || (settings.filaments[0] || {}).id, grams: num(t.grams, 0) }];
+  }
+  if (t.discountType !== "eur") t.discountType = "pct";
+  t.discountValue = num(t.discountValue, 0);
+  delete t.filamentId; delete t.grams;
+  return t;
+}
+function firstFilament(t) { return filamentOf(((t.filamentLines || [])[0] || {}).filamentId); }
+function filamentPills(t) {
+  var lines = t.filamentLines || [];
+  if (!lines.length) return '<span class="client">—</span>';
+  var f = filamentOf(lines[0].filamentId), extra = lines.length - 1;
+  return '<span class="pill" style="border-color:' + esc(f.color) + '">' + esc(f.name) + '</span>' +
+    (extra > 0 ? ' <span class="pill">+' + extra + '</span>' : '');
+}
+
+function costOf(t) {
+  var p = printerOf(t.printerId);
+  var q = Math.max(1, num(t.qty, 1));
+  var waste = 1 + num(settings.wastePct) / 100;
+  var spools = [], grams = 0, withWaste = 0, material = 0;
+  (t.filamentLines || []).forEach(function (l) {
+    var f = filamentOf(l.filamentId), g = num(l.grams) * q, gw = g * waste, c = gw / 1000 * num(f.pricePerKg);
+    grams += g; withWaste += gw; material += c;
+    spools.push({ ref: f, grams: g, withWaste: gw, cost: c });
+  });
+  var machine = num(t.printHours) * q * num(p.rate);
+  var labour = num(t.laborMin) * q / 60 * num(settings.laborRate);
+  var sub = material + machine + labour;
+  var margin = sub * num(settings.marginPct) / 100;
+  var gross = sub + margin;
+  var disc = t.discountType === "eur" ? num(t.discountValue) : gross * num(t.discountValue) / 100;
+  disc = Math.max(0, Math.min(disc, gross));
+  var total = gross - disc;
+  return {
+    q: q, spools: spools, grams: grams, withWaste: withWaste,
+    material: material, machine: machine, labour: labour,
+    sub: sub, margin: margin, gross: gross, disc: disc, total: total,
+    profit: total - sub, realMargin: sub > 0 ? (total - sub) / sub * 100 : 0,
+    belowCost: total < sub - 0.005
+  };
+}
+
+/* ── scheduling: FCFS per printer, inside each printer's window ─ */
+var plan = null;
+function buildPlan() {
+  var nowH = (new Date()).getHours() + (new Date()).getMinutes() / 60;
+  var lanes = {};
+  function mk(p) {
+    var w = windowOf(p);
+    var elapsed = Math.min(w.hours, Math.max(0, nowH - w.start));
+    return { printer: p, win: w, cap: w.hours, elapsed: elapsed, load: new Array(MAXD).fill(0), cursor: 0 };
+  }
+  settings.printers.forEach(function (p) { lanes[p.id] = mk(p); });
+  function lane(id) { if (!lanes[id]) { var p = printerOf(id); lanes[p.id] = mk(p); return lanes[p.id]; } return lanes[id]; }
+
+  var active = tasks.filter(function (t) { return t.status !== "done"; }).sort(function (a, b) { return a.order - b.order; });
+  var byTask = {};
+
+  function used(L, d) { return L.load[d] + (d === 0 ? L.elapsed : 0); }
+
+  /* A job takes a slice out of one day's budget. It only moves to the next day
+     when the whole job no longer fits in what is left of this one. A job longer
+     than a full day is the exception: it runs on, and is flagged. */
+  function place(t, forced) {
+    var L = lane(t.printerId), total = jobHours(t), spans = [], guard = 0;
+    if (total <= 0) total = 0.25;
+    var freeAt = function (d) { return Math.max(0, L.cap - used(L, d)); };
+
+    if (total <= L.cap + 1e-6) {
+      var d = forced != null ? Math.max(0, forced) : L.cursor;
+      if (forced == null) {
+        while (d < MAXD - 1 && freeAt(d) < total - 1e-6) d++;
+        L.cursor = d; /* nothing later in the queue may start before this */
+      }
+      var from = L.win.start + used(L, d);
+      L.load[d] += total;
+      spans.push({ day: d, hours: total, from: from, to: from + total });
+      return { spans: spans, lane: L, oversized: false };
+    }
+
+    /* longer than a whole day: it has to run across days */
+    var rem = total, dd = forced != null ? Math.max(0, forced) : L.cursor;
+    if (forced == null) {
+      while (dd < MAXD - 1 && freeAt(dd) <= 1e-6) dd++;
+      L.cursor = dd;
+    }
+    while (rem > 1e-6 && dd < MAXD && guard++ < 240) {
+      var free = (forced != null && spans.length === 0) ? Math.max(0.25, L.cap - (dd === 0 ? L.elapsed : 0)) : freeAt(dd);
+      if (free <= 1e-6) { dd++; continue; }
+      var use = Math.min(rem, free);
+      var f0 = L.win.start + used(L, dd);
+      L.load[dd] += use;
+      spans.push({ day: dd, hours: use, from: f0, to: f0 + use });
+      rem -= use; dd++;
+    }
+    return { spans: spans, lane: L, oversized: true };
+  }
+
+  active.filter(function (t) { return t.pinDay; }).forEach(function (t) {
+    var di = dayIndexOf(t.pinDay);
+    var r = place(t, di == null ? 0 : di);
+    byTask[t.id] = { spans: r.spans, lane: r.lane, pinned: true, oversized: r.oversized };
+  });
+  active.filter(function (t) { return !t.pinDay; }).forEach(function (t) {
+    var r = place(t, null);
+    byTask[t.id] = { spans: r.spans, lane: r.lane, pinned: false, oversized: r.oversized };
+  });
+
+  active.forEach(function (t) {
+    var e = byTask[t.id]; if (!e) return;
+    e.start = e.spans.length ? e.spans[0].day : null;
+    e.end = e.spans.length ? e.spans[e.spans.length - 1].day : null;
+    e.beyond = e.end == null || e.end >= HORIZON;
+    var dl = dayIndexOf(t.deadline);
+    e.deadlineDay = dl;
+    e.late = (dl != null && e.end != null && e.end > dl);
+    e.finishDate = e.end == null ? null : addDays(today(), e.end);
+    e.splits = e.spans.length;
+    e.tooLong = e.oversized || (!e.lane.win.round && num(t.printHours) > e.lane.cap + 1e-6);
+  });
+  return { lanes: lanes, byTask: byTask };
+}
+
+/* ── render ─────────────────────────────────────────── */
+function render() {
+  plan = buildPlan();
+  renderClients(); renderStrip(); renderAlerts(); renderCalendar(); renderQueue();
+  var last = addDays(today(), HORIZON - 1);
+  document.getElementById("range-label").textContent =
+    today().toLocaleDateString(undefined, { day: "numeric", month: "short" }) + " – " + last.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+function clientList() {
+  var seen = {}, out = [];
+  tasks.forEach(function (t) { var c = (t.client || "").trim(); if (c && !seen[c]) { seen[c] = 1; out.push(c); } });
+  return out.sort();
+}
+function renderClients() {
+  var sel = document.getElementById("client-filter");
+  var list = clientList();
+  if (list.indexOf(clientFilter) < 0 && clientFilter !== "*") clientFilter = "*";
+  sel.innerHTML = '<option value="*">All clients</option>' + list.map(function (c) { return '<option value="' + esc(c) + '"' + (c === clientFilter ? " selected" : "") + '>' + esc(c) + '</option>'; }).join("");
+  sel.value = clientFilter;
+  document.getElementById("btn-quote").textContent = clientFilter === "*" ? "Quote" : "Quote " + clientFilter;
+}
+
+function renderStrip() {
+  var act = tasks.filter(function (t) { return t.status !== "done" && matches(t); });
+  var totalH = act.reduce(function (a, t) { return a + jobHours(t); }, 0);
+  var totalG = act.reduce(function (a, t) { return a + costOf(t).withWaste; }, 0);
+  var value = act.reduce(function (a, t) { return a + costOf(t).total; }, 0);
+  var lateN = act.filter(function (t) { var e = plan.byTask[t.id]; return e && e.late; }).length;
+  var capTotal = settings.printers.reduce(function (a, p) { return a + windowOf(p).hours; }, 0);
+  var daysNeeded = capTotal > 0 ? totalH / capTotal : 0;
+  document.getElementById("strip").innerHTML = [
+    tile("open jobs", act.length + "", clientFilter === "*" ? (tasks.length - act.length) + " finished" : "for " + clientFilter),
+    tile("print time", (Math.round(totalH * 10) / 10) + "<small>h</small>", "≈ " + (Math.round(daysNeeded * 10) / 10) + " days at " + Math.round(capTotal) + "h/day capacity"),
+    tile("filament", (totalG >= 1000 ? (totalG / 1000).toFixed(2) + "<small>kg</small>" : Math.round(totalG) + "<small>g</small>"), "incl. " + num(settings.wastePct) + "% waste"),
+    tile("queue value", esc(settings.currency) + Math.round(value), "at " + num(settings.marginPct) + "% margin"),
+    tile("at risk", lateN + "", lateN ? "past deadline" : "all on time")
+  ].join("");
+}
+function tile(k, v, s) { return '<div class="stat"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="k" style="text-transform:none;letter-spacing:0;font-size:11px;margin-top:2px">' + esc(s) + '</div></div>'; }
+
+function renderAlerts() {
+  var out = [], overs = [];
+  Object.keys(plan.lanes).forEach(function (pid) {
+    var L = plan.lanes[pid];
+    for (var d = 0; d < HORIZON; d++) if (L.load[d] + (d === 0 ? L.elapsed : 0) > L.cap + 1e-6) overs.push({ p: L.printer, d: d, h: L.load[d], cap: L.cap });
+  });
+  if (overs.length) {
+    out.push(alertRow("crit", "!!", "<b>" + overs.length + " day" + (overs.length > 1 ? "s" : "") + " booked past the printer's ceiling.</b> " +
+      overs.slice(0, 3).map(function (o) { return esc(o.p.name) + " on " + fmtShort(addDays(today(), o.d)) + ": " + hrs(o.h) + " of work in a " + o.cap + "h day"; }).join("; ") +
+      ". Unpin something, move it down the queue, or widen that printer's hours."));
+  }
+  var below = tasks.filter(function (t) { return t.status !== "done" && costOf(t).belowCost; });
+  if (below.length) {
+    out.push(alertRow("crit", "€", "<b>" + below.length + " job" + (below.length > 1 ? "s" : "") + " discounted below cost:</b> " +
+      below.slice(0, 4).map(function (t) { return '<button class="lnk" data-open="' + t.id + '">' + esc(t.product) + "</button>"; }).join(", ") +
+      " — you are paying to print."));
+  }
+  var tooLong = tasks.filter(function (t) { var e = plan.byTask[t.id]; return e && e.tooLong; });
+  if (tooLong.length) {
+    out.push(alertRow("warn", "◷", "<b>" + tooLong.length + " job" + (tooLong.length > 1 ? "s do" : " does") + " not fit in a single day.</b> " +
+      tooLong.slice(0, 4).map(function (t) { return '<button class="lnk" data-open="' + t.id + '">' + esc(t.product) + "</button> (" + hrs(jobHours(t)) + ")"; }).join(", ") +
+      " — these run on across days, so the printer has to keep going unattended."));
+  }
+  var late = tasks.filter(function (t) { var e = plan.byTask[t.id]; return e && e.late && !e.beyond; });
+  if (late.length) {
+    out.push(alertRow("crit", "!", "<b>" + late.length + " job" + (late.length > 1 ? "s" : "") + " finish after the deadline:</b> " +
+      late.slice(0, 4).map(function (t) { return '<button class="lnk" data-open="' + t.id + '">' + esc(t.product) + "</button> (" + fmtShort(plan.byTask[t.id].finishDate) + " vs " + fmtShort(parseISO(t.deadline)) + ")"; }).join(", ")));
+  }
+  var beyond = tasks.filter(function (t) { var e = plan.byTask[t.id]; return e && e.beyond; });
+  if (beyond.length) {
+    out.push(alertRow("warn", "→", "<b>" + beyond.length + " job" + (beyond.length > 1 ? "s" : "") + " fall outside the 15-day window.</b> " +
+      beyond.slice(0, 4).map(function (t) { return '<button class="lnk" data-open="' + t.id + '">' + esc(t.product) + "</button>"; }).join(", ") + " — the queue is longer than the plan."));
+  }
+  var el = document.getElementById("alerts");
+  el.innerHTML = out.join("");
+  el.querySelectorAll("[data-open]").forEach(function (b) { b.onclick = function () { openTask(b.dataset.open); }; });
+}
+function alertRow(kind, mark, html) { return '<div class="alert ' + kind + '"><span class="mk">' + mark + '</span><span>' + html + '</span></div>'; }
+
+function renderCalendar() {
+  var cal = document.getElementById("cal"), out = "";
+  var t0 = today();
+  for (var d = 0; d < HORIZON; d++) {
+    var date = addDays(t0, d), dow = date.getDay();
+    var over = false, loadHtml = "", anyLoad = false;
+    settings.printers.forEach(function (p) {
+      var L = plan.lanes[p.id]; if (!L) return;
+      var h = L.load[d]; if (h <= 1e-6) return;
+      anyLoad = true;
+      var usedH = h + (d === 0 ? L.elapsed : 0);
+      var pct = Math.min(100, usedH / L.cap * 100), isOver = usedH > L.cap + 1e-6;
+      if (isOver) over = true;
+      var freeH = Math.max(0, L.cap - usedH);
+      loadHtml += '<div class="loadrow" title="' + esc(p.name) + ' · ' + hrs(h) + ' booked, ' + hrs(freeH) + ' free of ' + L.cap + 'h">' +
+        '<span style="width:3px;height:9px;border-radius:2px;background:' + esc(p.color) + '"></span>' +
+        '<span class="bar' + (isOver ? " over" : "") + '"><span style="width:' + pct + '%;background:' + esc(p.color) + '"></span></span>' +
+        '<span class="h">' + (isOver ? hrs(h) : hrs(freeH) + " free") + '</span></div>';
+    });
+
+    var chips = "";
+    tasks.forEach(function (t) {
+      var e = plan.byTask[t.id]; if (!e) return;
+      var span = null;
+      for (var i = 0; i < e.spans.length; i++) if (e.spans[i].day === d) span = e.spans[i];
+      if (!span) return;
+      var cont = e.spans[0].day !== d;
+      var p = printerOf(t.printerId);
+      chips += '<button class="chip' + (e.late ? " late" : "") + (cont ? " cont" : "") + (matches(t) ? "" : " dim") + '" data-open="' + t.id + '" title="' + esc(t.product) + ' — ' + esc(p.name) + ' — ' + clock(span.from) + '→' + clock(span.to) + '">' +
+        '<span class="swatch" style="background:' + esc(p.color) + '"></span>' +
+        '<span class="nm">' + (cont ? "↳ " : "") + esc(t.product) + '</span>' +
+        '<span class="hh">' + clock(span.from) + '–' + clock(span.to) + '</span></button>';
+    });
+
+    var dues = tasks.filter(function (t) { return t.status !== "done" && dayIndexOf(t.deadline) === d; })
+      .map(function (t) { var e = plan.byTask[t.id]; return '<button class="dueflag' + (e && e.late ? " miss" : "") + '" data-open="' + t.id + '">due ' + esc(t.product) + '</button>'; }).join("");
+
+    out += '<div class="day' + (d === 0 ? " today" : "") + ((dow === 0 || dow === 6) ? " weekend" : "") + (over ? " over" : "") + '">' +
+      '<div class="dhead"><div><div class="dow">' + date.toLocaleDateString(undefined, { weekday: "short" }) + '</div>' +
+      '<div class="num">' + date.getDate() + ' <span style="font-size:11px;font-weight:600;color:var(--muted)">' + date.toLocaleDateString(undefined, { month: "short" }) + '</span></div></div>' +
+      (over ? '<span class="today-tag" style="color:var(--crit)">over</span>' : (d === 0 ? '<span class="today-tag">today</span>' : '')) + '</div>' +
+      (anyLoad ? '<div class="load">' + loadHtml + '</div>' : '') +
+      (chips ? '<div class="chips">' + chips + '</div>' : '<div class="empty-day">free</div>') +
+      (dues ? '<div class="due">' + dues + '</div>' : '') +
+      '</div>';
+  }
+  cal.innerHTML = out;
+  cal.querySelectorAll("[data-open]").forEach(function (b) { b.onclick = function () { openTask(b.dataset.open); }; });
+  var busy = 0; Object.keys(plan.lanes).forEach(function (k) { for (var i = 0; i < HORIZON; i++) if (plan.lanes[k].load[i] > 1e-6) busy++; });
+  document.getElementById("cal-note").textContent = busy + " printer-days booked";
+}
+
+function laneTasks(pid) {
+  return tasks.filter(function (t) { return t.printerId === pid && (showDone || t.status !== "done") && matches(t); })
+    .sort(function (a, b) {
+      if ((a.status === "done") !== (b.status === "done")) return a.status === "done" ? 1 : -1;
+      return a.order - b.order;
+    });
+}
+
+function renderQueue() {
+  var q = document.getElementById("queue"), out = "";
+  settings.printers.forEach(function (p) {
+    var list = laneTasks(p.id);
+    var open = list.filter(function (t) { return t.status !== "done"; });
+    var h = open.reduce(function (a, t) { return a + jobHours(t); }, 0);
+    var v = open.reduce(function (a, t) { return a + costOf(t).total; }, 0);
+    var w = windowOf(p);
+    var lanePos = tasks.filter(function (t) { return t.printerId === p.id && t.status !== "done"; }).sort(function (a, b) { return a.order - b.order; }).map(function (t) { return t.id; });
+    var rows = "";
+    list.forEach(function (t) {
+      var e = plan.byTask[t.id] || {};
+      var c = costOf(t);
+      var isDone = t.status === "done";
+      var pos = lanePos.indexOf(t.id) + 1;
+      rows += '<tr class="row' + (isDone ? " done-row" : "") + '">' +
+        '<td>' + (isDone ? '<span class="pill done">done</span>' :
+          '<input class="num-in mono" type="number" min="1" value="' + pos + '" data-pos="' + t.id + '" aria-label="position">' +
+          '<span class="mv"><button data-up="' + t.id + '"' + (pos <= 1 ? " disabled" : "") + ' title="Move up">▲</button>' +
+          '<button data-down="' + t.id + '"' + (pos >= lanePos.length ? " disabled" : "") + ' title="Move down">▼</button></span>') + '</td>' +
+        '<td><div class="prod" data-open="' + t.id + '">' + esc(t.product) + (num(t.qty, 1) > 1 ? ' <span class="client">×' + num(t.qty, 1) + '</span>' : '') + '</div>' +
+        (t.client ? '<div class="client">' + esc(t.client) + '</div>' : '') + '</td>' +
+        '<td>' + filamentPills(t) + '</td>' +
+        '<td class="mono right">' + Math.round(c.grams) + ' g</td>' +
+        '<td class="mono right">' + hrs(jobHours(t)) + '</td>' +
+        '<td class="mono">' + (t.deadline ? fmtShort(parseISO(t.deadline)) : "—") + '</td>' +
+        '<td class="mono">' + (isDone ? "—" : (e.beyond ? '<span class="pill late">past day 15</span>' : fmtShort(e.finishDate) + ' <span style="color:var(--muted)">' + (e.spans && e.spans.length ? clock(e.spans[e.spans.length - 1].to) : "") + '</span>')) + '</td>' +
+        '<td>' + (isDone ? '' : (e.late ? '<span class="pill late">late</span>' : t.status === "printing" ? '<span class="pill printing">printing</span>' : '<span class="pill">queued</span>')) +
+        (t.pinDay && !isDone ? ' <span class="pill pinned">pinned</span>' : '') +
+        (c.disc > 0 && !isDone ? ' <span class="pill pinned">−' + money(c.disc) + '</span>' : '') + '</td>' +
+        '<td class="right tot"' + (c.belowCost ? ' style="color:var(--crit)"' : '') + '>' + money(c.total) + '</td>' +
+        '<td class="right"><button class="btn ghost" data-open="' + t.id + '" style="padding:4px 8px">Open</button></td>' +
+        '</tr>';
+    });
+    out += '<div class="lane">' +
+      '<div class="lanehead"><span class="sw" style="background:' + esc(p.color) + '"></span><h3>' + esc(p.name) + '</h3>' +
+      '<span class="meta">' + open.length + ' queued · ' + hrs(h) + ' · ' + money(v) + '</span>' +
+      '<span class="spacer"></span><span class="meta">' + (w.round ? "runs 24h" : clock(w.start) + "–" + clock(w.start + w.hours) + " (" + w.hours + "h)") + ' · ' + money(num(p.rate)) + '/h</span></div>' +
+      (rows ? '<div class="tblwrap"><table class="qtable"><thead><tr>' +
+        '<th style="width:96px">Order</th><th>Product</th><th>Filament</th><th class="right">Material</th><th class="right">Print</th><th>Deadline</th><th>Finishes</th><th>Status</th><th class="right">Price</th><th></th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+        : '<div class="emptystate">' + (clientFilter === "*" ? "Nothing queued on this printer." : "Nothing for " + esc(clientFilter) + " on this printer.") + '</div>') +
+      '</div>';
+  });
+  q.innerHTML = out;
+  q.querySelectorAll("[data-open]").forEach(function (b) { b.onclick = function () { openTask(b.dataset.open); }; });
+  q.querySelectorAll("[data-up]").forEach(function (b) { b.onclick = function () { move(b.dataset.up, -1); }; });
+  q.querySelectorAll("[data-down]").forEach(function (b) { b.onclick = function () { move(b.dataset.down, 1); }; });
+  q.querySelectorAll("[data-pos]").forEach(function (i) {
+    i.onchange = function () { setPosition(i.dataset.pos, parseInt(i.value, 10)); };
+    i.onkeydown = function (ev) { if (ev.key === "Enter") i.blur(); };
+  });
+}
+
+/* ── ordering ───────────────────────────────────────── */
+function taskById(id) { for (var i = 0; i < tasks.length; i++) if (tasks[i].id === id) return tasks[i]; return null; }
+
+function move(id, dir) {
+  var t = taskById(id); if (!t) return;
+  var lane = tasks.filter(function (x) { return x.printerId === t.printerId && x.status !== "done"; }).sort(function (a, b) { return a.order - b.order; });
+  var i = lane.map(function (x) { return x.id; }).indexOf(id), j = i + dir;
+  if (i < 0 || j < 0 || j >= lane.length) return;
+  var o = lane[i].order; lane[i].order = lane[j].order; lane[j].order = o;
+  save([lane[i], lane[j]]); render();
+}
+
+function setPosition(id, n) {
+  var t = taskById(id); if (!t || !isFinite(n)) { render(); return; }
+  var lane = tasks.filter(function (x) { return x.printerId === t.printerId && x.status !== "done"; }).sort(function (a, b) { return a.order - b.order; });
+  var i = lane.map(function (x) { return x.id; }).indexOf(id);
+  var target = Math.min(Math.max(1, n), lane.length) - 1;
+  if (i < 0 || target === i) { render(); return; }
+  lane.splice(target, 0, lane.splice(i, 1)[0]);
+  var orders = lane.map(function (x) { return x.order; }).sort(function (a, b) { return a - b; });
+  lane.forEach(function (x, k) { x.order = orders[k]; });
+  save(lane); render();
+}
+function nextOrder() { return tasks.length ? Math.max.apply(null, tasks.map(function (t) { return num(t.order); })) + 10 : 10; }
+
+/* ── task modal ─────────────────────────────────────── */
+function blankTask() {
+  return {
+    id: uid(), product: "", client: clientFilter === "*" ? "" : clientFilter, printerId: (settings.printers[0] || {}).id,
+    filamentLines: [{ filamentId: (settings.filaments[0] || {}).id, grams: 100 }],
+    printHours: 4, laborMin: 15, qty: 1, discountType: "pct", discountValue: 0,
+    deadline: iso(addDays(today(), 7)), notes: "", status: "queued", pinDay: "", order: nextOrder(), createdAt: new Date().toISOString()
+  };
+}
+
+function openTask(id) {
+  var t = id ? taskById(id) : null;
+  var draft = t ? clone(t) : blankTask();
+  var isNew = !t;
+
+  document.getElementById("modal-root").innerHTML = '<div class="scrim" id="scrim"><div class="modal" role="dialog" aria-modal="true">' +
+    '<div class="mhead"><h2>' + (isNew ? "New job" : "Job detail") + '</h2><span style="flex:1"></span>' +
+    '<span class="mono" style="font-size:11px;color:var(--muted)" id="sched-note"></span>' +
+    '<button class="btn ghost" id="close-x" aria-label="Close">✕</button></div>' +
+    '<div class="mbody">' +
+      '<div class="grid">' +
+        '<div class="f span2"><label>Product</label><input id="f-product" value="' + esc(draft.product) + '" placeholder="e.g. Cable clip, 40 mm"></div>' +
+        '<div class="f"><label>Quantity</label><input id="f-qty" type="number" min="1" step="1" value="' + num(draft.qty, 1) + '"></div>' +
+        '<div class="f"><label>Client / order</label><input id="f-client" list="client-list" value="' + esc(draft.client || "") + '" placeholder="optional">' +
+          '<datalist id="client-list">' + clientList().map(function (c) { return '<option value="' + esc(c) + '">'; }).join("") + '</datalist></div>' +
+        '<div class="f"><label>Printer</label><select id="f-printer">' + settings.printers.map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === draft.printerId ? " selected" : "") + '>' + esc(p.name) + '</option>'; }).join("") + '</select></div>' +
+        '<div class="f"><label>Print time (h, each)</label><input id="f-hours" type="number" min="0" step="0.25" value="' + num(draft.printHours) + '"></div>' +
+        '<div class="f"><label>Hands-on (min, each)</label><input id="f-labor" type="number" min="0" step="5" value="' + num(draft.laborMin) + '"></div>' +
+        '<div class="f"><label>Deadline</label><input id="f-deadline" type="date" value="' + esc(draft.deadline || "") + '"></div>' +
+        '<div class="f"><label>Status</label><select id="f-status">' +
+          ["queued", "printing", "done"].map(function (s) { return '<option value="' + s + '"' + (s === draft.status ? " selected" : "") + '>' + s + '</option>'; }).join("") + '</select></div>' +
+        '<div class="f"><label>Pin to day</label><input id="f-pin" type="date" value="' + esc(draft.pinDay || "") + '"><div class="hint">leave empty for FCFS</div></div>' +
+        '<div class="f"><label>Discount</label><div class="combo">' +
+          '<input id="f-disc" type="number" min="0" step="0.5" value="' + num(draft.discountValue) + '">' +
+          '<select id="f-disctype"><option value="pct"' + (draft.discountType !== "eur" ? " selected" : "") + '>%</option>' +
+          '<option value="eur"' + (draft.discountType === "eur" ? " selected" : "") + '>' + esc(settings.currency) + '</option></select>' +
+        '</div></div>' +
+      '</div>' +
+      '<div class="fieldset"><span class="lg">Filament</span><div class="lines" id="fil-lines"></div>' +
+        '<div class="lineadd"><button type="button" class="btn" id="add-fil">+ Filament</button></div></div>' +
+      '<div class="calcbox" id="calc"></div>' +
+      '<div class="f"><label>Notes</label><textarea id="f-notes" placeholder="Layer height, infill, supports, colour swaps, packaging, whatever future-you needs.">' + esc(draft.notes || "") + '</textarea></div>' +
+    '</div>' +
+    '<div class="mfoot">' + (isNew ? '' : '<button class="btn danger" id="btn-del">Delete</button>') +
+      '<span style="flex:1"></span><button class="btn" id="btn-cancel">Cancel</button>' +
+      '<button class="btn primary" id="btn-save">' + (isNew ? "Add to queue" : "Save") + '</button>' +
+    '</div></div></div>';
+
+  function lineRow(i, l) {
+    var f = filamentOf(l.filamentId);
+    return '<div class="lrow"><span class="lsw" style="background:' + esc(f.color) + '"></span>' +
+      '<select data-i="' + i + '" data-k="filamentId" aria-label="Filament">' +
+      settings.filaments.map(function (x) { return '<option value="' + esc(x.id) + '"' + (x.id === l.filamentId ? " selected" : "") + '>' + esc(x.name) + ' · ' + esc(settings.currency) + num(x.pricePerKg) + '/kg</option>'; }).join("") + '</select>' +
+      '<input data-i="' + i + '" data-k="grams" type="number" min="0" step="1" value="' + num(l.grams) + '" aria-label="grams">' +
+      '<span class="lunit">g each</span>' +
+      '<button type="button" class="xbtn" data-rm="' + i + '" title="Remove line">✕</button></div>';
+  }
+  function renderLines() {
+    document.getElementById("fil-lines").innerHTML = (draft.filamentLines || []).map(function (l, i) { return lineRow(i, l); }).join("");
+    document.querySelectorAll("#fil-lines [data-k]").forEach(function (el) {
+      el.addEventListener("input", function () { readLines(); paint(); });
+      el.addEventListener("change", function () { readLines(); if (el.dataset.k === "filamentId") renderLines(); paint(); });
+    });
+    document.querySelectorAll("#fil-lines [data-rm]").forEach(function (b) {
+      b.onclick = function () {
+        readLines();
+        if (draft.filamentLines.length > 1) draft.filamentLines.splice(+b.dataset.rm, 1);
+        renderLines(); paint();
+      };
+    });
+  }
+  function readLines() {
+    document.querySelectorAll("#fil-lines [data-k]").forEach(function (el) {
+      var l = draft.filamentLines[+el.dataset.i]; if (!l) return;
+      l[el.dataset.k] = el.dataset.k === "grams" ? num(el.value) : el.value;
+    });
+  }
+
+  function read() {
+    readLines();
+    draft.product = document.getElementById("f-product").value.trim();
+    draft.client = document.getElementById("f-client").value.trim();
+    draft.printerId = document.getElementById("f-printer").value;
+    draft.printHours = num(document.getElementById("f-hours").value);
+    draft.discountValue = num(document.getElementById("f-disc").value);
+    draft.discountType = document.getElementById("f-disctype").value;
+    draft.laborMin = num(document.getElementById("f-labor").value);
+    draft.qty = Math.max(1, num(document.getElementById("f-qty").value, 1));
+    draft.deadline = document.getElementById("f-deadline").value;
+    draft.status = document.getElementById("f-status").value;
+    draft.pinDay = document.getElementById("f-pin").value;
+    draft.notes = document.getElementById("f-notes").value;
+  }
+  function row(l, s, v) { return '<div class="calcrow"><span class="lbl">' + l + (s ? ' <span style="opacity:.7">· ' + s + '</span>' : '') + '</span><span class="val">' + v + '</span></div>'; }
+  function paint() {
+    var c = costOf(draft), p = printerOf(draft.printerId), w = windowOf(p);
+    var q = Math.max(1, num(draft.qty, 1));
+    document.getElementById("calc").innerHTML =
+      c.spools.map(function (s) { return row("Filament — " + esc(s.ref.name), Math.round(s.withWaste) + " g × " + money(num(s.ref.pricePerKg) / 1000) + "/g", money(s.cost)); }).join("") +
+      row("Machine — " + esc(p.name), (num(draft.printHours) * q) + " h × " + money(num(p.rate)) + "/h", money(c.machine)) +
+      row("Labour", (num(draft.laborMin) * q) + " min × " + money(num(settings.laborRate)) + "/h", money(c.labour)) +
+      '<div class="calcrow sum"><span class="lbl"><b>Cost</b></span><span class="val"><b>' + money(c.sub) + '</b></span></div>' +
+      row("Margin " + num(settings.marginPct) + "%", "", money(c.margin)) +
+      row("List price", "", money(c.gross)) +
+      (c.disc > 0 ? '<div class="calcrow neg"><span class="lbl">Discount' + (draft.discountType === "eur" ? "" : " · " + num(draft.discountValue) + "%") + '</span><span class="val">− ' + money(c.disc) + '</span></div>' : "") +
+      '<div class="calcrow total"><span>Price' + (q > 1 ? " (" + q + " units)" : "") + '</span><span class="val">' + money(c.total) + '</span></div>' +
+      '<div class="badgeline">' +
+        (q > 1 ? '<span class="badge">' + money(c.total / q) + ' per unit</span>' : '') +
+        '<span class="badge">' + Math.round(c.withWaste) + ' g total</span>' +
+        '<span class="badge ' + (c.belowCost ? "bad" : "good") + '">Profit <b>' + money(c.profit) + '</b></span>' +
+        '<span class="badge ' + (c.belowCost ? "bad" : "") + '">Real margin <b>' + Math.round(c.realMargin) + '%</b></span>' +
+        (c.belowCost ? '<span class="badge bad">Below cost</span>' : '') +
+      '</div>' +
+      '<div class="calcnote">' + num(settings.wastePct) + '% purge/failure waste added to material. ' +
+      (w.round ? esc(p.name) + " may run unattended around the clock." : esc(p.name) + " runs " + clock(w.start) + "–" + clock(w.start + w.hours) + ", " + w.hours + "h a day.") +
+      (!w.round && num(draft.printHours) > w.hours ? ' <b style="color:var(--warn)">This print is longer than that window.</b>' : '') +
+      '</div>';
+    var e = plan.byTask[draft.id];
+    var note = document.getElementById("sched-note");
+    if (note) note.textContent = e ? (e.beyond ? "finishes past day 15" :
+      "runs " + fmtShort(addDays(today(), e.start)) + " " + clock(e.spans[0].from) + " → " + fmtShort(e.finishDate) + " " + clock(e.spans[e.spans.length - 1].to) + (e.late ? " · LATE" : "")) : "not scheduled yet";
+  }
+
+  ["f-product", "f-client", "f-printer", "f-hours", "f-labor", "f-qty", "f-deadline", "f-status", "f-pin", "f-disc", "f-disctype", "f-notes"].forEach(function (idd) {
+    var el = document.getElementById(idd);
+    el.addEventListener("input", function () { read(); paint(); });
+    el.addEventListener("change", function () { read(); paint(); });
+  });
+  document.getElementById("add-fil").onclick = function () {
+    readLines();
+    draft.filamentLines.push({ filamentId: (settings.filaments[0] || {}).id, grams: 0 });
+    renderLines(); paint();
+    var g = document.querySelectorAll('#fil-lines [data-k="grams"]');
+    if (g.length) g[g.length - 1].focus();
+  };
+  renderLines();
+  paint();
+  document.getElementById("f-product").focus();
+
+  document.getElementById("btn-save").onclick = function () {
+    read();
+    if (!draft.product) { var pf = document.getElementById("f-product"); pf.focus(); pf.style.borderColor = "var(--crit)"; return; }
+    if (isNew) { draft.order = nextOrder(); tasks.push(draft); }
+    else { var i = tasks.map(function (x) { return x.id; }).indexOf(draft.id); tasks[i] = draft; }
+    save([draft]); closeModal(); render();
+  };
+  document.getElementById("btn-cancel").onclick = closeModal;
+  document.getElementById("close-x").onclick = closeModal;
+  if (!isNew) document.getElementById("btn-del").onclick = function () {
+    tasks = tasks.filter(function (x) { return x.id !== draft.id; });
+    remove(draft.id); closeModal(); render();
+  };
+  document.getElementById("scrim").onclick = function (ev) { if (ev.target.id === "scrim") closeModal(); };
+}
+function closeModal() { document.getElementById("modal-root").innerHTML = ""; }
+
+/* ── quote ──────────────────────────────────────────── */
+function openQuote() {
+  var who = clientFilter === "*" ? "" : clientFilter;
+  var list = tasks.filter(function (t) { return t.status !== "done" && matches(t); }).sort(function (a, b) { return a.order - b.order; });
+  var totals = list.reduce(function (a, t) { var c = costOf(t); a.sub += c.sub; a.margin += c.margin; a.disc += c.disc; a.total += c.total; a.g += c.withWaste; a.h += jobHours(t); return a; }, { sub: 0, margin: 0, disc: 0, total: 0, g: 0, h: 0 });
+  var latest = null;
+  list.forEach(function (t) { var e = plan.byTask[t.id]; if (e && e.finishDate && (!latest || e.finishDate > latest)) latest = e.finishDate; });
+  var ref = "Q-" + iso(new Date()).replace(/-/g, "") + "-" + String(list.length).padStart(2, "0");
+
+  document.getElementById("modal-root").innerHTML = '<div class="scrim" id="scrim"><div class="modal wide" role="dialog" aria-modal="true">' +
+    '<div class="mhead"><h2>Quote</h2><span style="flex:1"></span>' +
+    '<button class="btn" id="btn-print">Print / PDF</button><button class="btn ghost" id="close-x" aria-label="Close">✕</button></div>' +
+    '<div class="mbody">' +
+      '<div class="qhead"><div class="qto"><b>' + esc(settings.shopName || "3D printing service") + '</b>' +
+        'Quote ' + ref + '<br>' + new Date().toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }) + '</div>' +
+        '<div class="qto" style="text-align:right"><b>' + esc(who || "Selected jobs") + '</b>' +
+        list.length + ' item' + (list.length === 1 ? '' : 's') + '<br>' +
+        (latest ? 'Ready by ' + latest.toLocaleDateString(undefined, { day: "numeric", month: "long" }) : 'No schedule') + '</div></div>' +
+      (list.length ? '<table class="qtbl"><thead><tr><th>Item</th><th class="right">Qty</th><th class="right">Material</th><th class="right">Print time</th><th class="right">Unit</th><th class="right">Amount</th></tr></thead><tbody>' +
+        list.map(function (t) {
+          var c = costOf(t), q = Math.max(1, num(t.qty, 1));
+          return '<tr><td><b>' + esc(t.product) + '</b>' + (t.notes ? '<div class="client">' + esc(String(t.notes).slice(0, 90)) + '</div>' : '') + '</td>' +
+            '<td class="right mono">' + q + '</td>' +
+            '<td class="right mono">' + c.spools.map(function (s) { return Math.round(s.withWaste) + ' g ' + esc(s.ref.name); }).join('<br>') + '</td>' +
+            '<td class="right mono">' + hrs(jobHours(t)) + '</td>' +
+            '<td class="right mono">' + money(c.total / q) + '</td>' +
+            '<td class="right mono">' + money(c.total) + (c.disc > 0 ? '<div class="client">−' + money(c.disc) + '</div>' : '') + '</td></tr>';
+        }).join("") + '</tbody><tfoot>' +
+        '<tr><td colspan="4"></td><td class="right">Total</td><td class="right mono" style="font-size:16px;color:var(--accent)">' + money(totals.total) + '</td></tr>' +
+        '</tfoot></table>' +
+        '<div class="qterms"><b>' + Math.round(totals.g) + ' g</b> of filament · <b>' + hrs(totals.h) + '</b> of machine time.<br>' +
+        '<div class="quote-editable" contenteditable="true" style="margin-top:8px">' + esc(settings.quoteTerms || "") + '</div>' +
+        '<span class="no-print" style="display:block;margin-top:6px">Click the terms above to edit them for this quote. Save the wording permanently in Settings → Rates.</span></div>'
+        : '<div class="emptystate">No open jobs' + (who ? ' for ' + esc(who) : '') + '. Pick a client in the header, or add jobs first.</div>') +
+    '</div>' +
+    '<div class="mfoot"><span class="mono" style="font-size:11.5px;color:var(--muted)">cost ' + money(totals.sub) + ' · margin ' + money(totals.margin) + ' · discount ' + money(totals.disc) + '</span>' +
+    '<span style="flex:1"></span><button class="btn" id="btn-close2">Close</button></div>' +
+    '</div></div>';
+  document.getElementById("btn-print").onclick = function () { window.print(); };
+  document.getElementById("close-x").onclick = closeModal;
+  document.getElementById("btn-close2").onclick = closeModal;
+  document.getElementById("scrim").onclick = function (ev) { if (ev.target.id === "scrim") closeModal(); };
+}
+
+/* ── settings modal ─────────────────────────────────── */
+function openSettings() {
+  var d = clone(settings);
+  var root = document.getElementById("modal-root");
+
+  function ratesHtml() {
+    return '<div class="grid two">' +
+      fld("s-labor", "Labour rate (per hour)", "number", num(d.laborRate), "0.5", "What your own time costs, applied to the hands-on minutes on each job.") +
+      fld("s-waste", "Waste / failure (%)", "number", num(d.wastePct), "1", "Added to every job's material: purge, brims, the occasional re-print.") +
+      fld("s-margin", "Margin (%)", "number", num(d.marginPct), "1", "Applied on top of material + machine + labour to get the quoted price.") +
+      fld("s-cur", "Currency symbol", "text", d.currency, "", "Display only.") +
+      fld("s-shop", "Shop name (on quotes)", "text", d.shopName || "", "", "Appears at the top of every quote.") +
+      '<div class="f span2"><label>Quote terms</label><textarea id="s-terms">' + esc(d.quoteTerms || "") + '</textarea><div class="hint">Default wording at the foot of each quote.</div></div>' +
+      '</div>';
+  }
+  function fld(idd, label, type, val, step, hint) {
+    return '<div class="f"><label>' + label + '</label><input id="' + idd + '" type="' + type + '"' + (step ? ' step="' + step + '"' : '') + ' value="' + esc(val) + '">' + (hint ? '<div class="hint">' + hint + '</div>' : '') + '</div>';
+  }
+  function printersHtml() {
+    return '<div><div class="phead"><span>Printer</span><span>Rate /h</span><span>Start</span><span>End</span><span>24h</span><span>Colour</span><span></span></div>' +
+      d.printers.map(function (p) {
+        var un = p.unattended !== false;
+        return '<div class="prow"><input data-p="' + p.id + '" data-k="name" value="' + esc(p.name) + '">' +
+          '<input data-p="' + p.id + '" data-k="rate" type="number" step="0.05" value="' + num(p.rate) + '">' +
+          '<input data-p="' + p.id + '" data-k="startHour" type="number" min="0" max="23" step="1" value="' + num(p.startHour, 8) + '"' + (un ? " disabled" : "") + '>' +
+          '<input data-p="' + p.id + '" data-k="endHour" type="number" min="1" max="24" step="1" value="' + num(p.endHour, 20) + '"' + (un ? " disabled" : "") + '>' +
+          '<label class="chk"><input type="checkbox" data-un="' + p.id + '"' + (un ? " checked" : "") + '> unattended</label>' +
+          '<input data-p="' + p.id + '" data-k="color" type="color" value="' + esc(p.color) + '">' +
+          '<button class="xbtn" data-delp="' + p.id + '" title="Remove">✕</button></div>';
+      }).join("") +
+      '<button class="btn" data-addp="1" style="margin-top:8px">+ Add printer</button>' +
+      '<div class="hint" style="margin-top:10px"><b>Unattended</b> means you are happy to let that machine run overnight: the plan gives it 24 hours a day. Uncheck it and the plan only books work between your start and end hours, so a job that needs more hours than the window gets flagged instead of quietly finishing at 3 a.m. Rate /h covers power, wear and consumables per printing hour.</div></div>';
+  }
+  function filamentHtml() {
+    return '<div><div class="fhead"><span>Filament</span><span>Price / kg</span><span>Colour</span><span></span></div>' +
+      d.filaments.map(function (f) {
+        return '<div class="frow"><input data-f="' + f.id + '" data-k="name" value="' + esc(f.name) + '">' +
+          '<input data-f="' + f.id + '" data-k="pricePerKg" type="number" step="0.5" value="' + num(f.pricePerKg) + '">' +
+          '<input data-f="' + f.id + '" data-k="color" type="color" value="' + esc(f.color) + '">' +
+          '<button class="xbtn" data-delf="' + f.id + '" title="Remove">✕</button></div>';
+      }).join("") +
+      '<button class="btn" data-addf="1" style="margin-top:8px">+ Add filament</button>' +
+      '<div class="hint" style="margin-top:10px">Price per kilogram of the spool as bought. Jobs quote against the spool they actually use.</div></div>';
+  }
+  function readTab(tab) {
+    if (tab === "Rates") {
+      d.laborRate = num(document.getElementById("s-labor").value);
+      d.wastePct = num(document.getElementById("s-waste").value);
+      d.marginPct = num(document.getElementById("s-margin").value);
+      d.currency = document.getElementById("s-cur").value || "€";
+      d.shopName = document.getElementById("s-shop").value;
+      d.quoteTerms = document.getElementById("s-terms").value;
+    } else if (tab === "Printers") {
+      root.querySelectorAll("[data-p]").forEach(function (i) {
+        var p = d.printers.filter(function (x) { return x.id === i.dataset.p; })[0]; if (!p) return;
+        p[i.dataset.k] = i.type === "number" ? num(i.value) : i.value;
+      });
+      root.querySelectorAll("[data-un]").forEach(function (i) {
+        var p = d.printers.filter(function (x) { return x.id === i.dataset.un; })[0]; if (!p) return;
+        p.unattended = i.checked;
+      });
+    } else {
+      root.querySelectorAll("[data-f]").forEach(function (i) {
+        var f = d.filaments.filter(function (x) { return x.id === i.dataset.f; })[0]; if (!f) return;
+        f[i.dataset.k] = i.type === "number" ? num(i.value) : i.value;
+      });
+    }
+  }
+
+  function paint(tab) {
+    root.innerHTML = '<div class="scrim" id="scrim"><div class="modal wide" role="dialog" aria-modal="true">' +
+      '<div class="mhead"><h2>Shop settings</h2><span style="flex:1"></span><button class="btn ghost" id="close-x" aria-label="Close">✕</button></div>' +
+      '<div class="tabs">' + ["Rates", "Printers", "Filament"].map(function (t) { return '<button class="tab' + (t === tab ? " on" : "") + '" data-tab="' + t + '">' + t + '</button>'; }).join("") + '</div>' +
+      '<div class="mbody">' + (tab === "Rates" ? ratesHtml() : tab === "Printers" ? printersHtml() : filamentHtml()) + '</div>' +
+      '<div class="mfoot"><span style="flex:1"></span><button class="btn" id="btn-cancel">Cancel</button><button class="btn primary" id="btn-save">Save settings</button></div>' +
+      '</div></div>';
+
+    root.querySelectorAll("[data-tab]").forEach(function (b) { b.onclick = function () { readTab(tab); paint(b.dataset.tab); }; });
+    root.querySelectorAll("[data-un]").forEach(function (b) { b.onchange = function () { readTab(tab); paint("Printers"); }; });
+    root.querySelectorAll("[data-addp]").forEach(function (b) { b.onclick = function () { readTab(tab); d.printers.push({ id: uid("p"), name: "Printer " + (d.printers.length + 1), rate: 0.85, color: pickColor(d.printers.length), unattended: true, startHour: 8, endHour: 20 }); paint("Printers"); }; });
+    root.querySelectorAll("[data-addf]").forEach(function (b) { b.onclick = function () { readTab(tab); d.filaments.push({ id: uid("f"), name: "New filament", pricePerKg: 25, color: pickColor(d.filaments.length + 3) }); paint("Filament"); }; });
+    root.querySelectorAll("[data-delp]").forEach(function (b) { b.onclick = function () { readTab(tab); if (d.printers.length > 1) d.printers = d.printers.filter(function (p) { return p.id !== b.dataset.delp; }); paint("Printers"); }; });
+    root.querySelectorAll("[data-delf]").forEach(function (b) { b.onclick = function () { readTab(tab); if (d.filaments.length > 1) d.filaments = d.filaments.filter(function (f) { return f.id !== b.dataset.delf; }); paint("Filament"); }; });
+    document.getElementById("close-x").onclick = closeModal;
+    document.getElementById("btn-cancel").onclick = closeModal;
+    document.getElementById("scrim").onclick = function (ev) { if (ev.target.id === "scrim") closeModal(); };
+    document.getElementById("btn-save").onclick = function () {
+      readTab(tab);
+      settings = d;
+      tasks.forEach(function (t) {
+        if (!d.printers.some(function (p) { return p.id === t.printerId; })) t.printerId = d.printers[0].id;
+        (t.filamentLines || []).forEach(function (l) { if (!d.filaments.some(function (f) { return f.id === l.filamentId; })) l.filamentId = d.filaments[0].id; });
+      });
+      saveSettings(); save(tasks); closeModal(); render();
+    };
+  }
+  paint("Rates");
+}
+function pickColor(i) { var c = ["#DC5410", "#0E7A72", "#7A4FB6", "#B7791F", "#3B82C4", "#B0447A"]; return c[i % c.length]; }
+
+/* ── help ───────────────────────────────────────────── */
+function openHelp() {
+  document.getElementById("modal-root").innerHTML = '<div class="scrim" id="scrim"><div class="modal" role="dialog" aria-modal="true">' +
+    '<div class="mhead"><h2>How Spool Queue works</h2><span style="flex:1"></span><button class="btn ghost" id="close-x" aria-label="Close">✕</button></div>' +
+    '<div class="mbody helpbody">' +
+      '<div><h3>1 · Set your numbers first</h3><p><b>Settings → Rates</b> holds your labour rate, waste percentage and margin. <b>Printers</b> holds one row per machine: its hourly cost, its colour, and whether it may run unattended. <b>Filament</b> holds the price per kilogram of each spool you buy. Every price in the app comes from these four numbers, so get them right once.</p></div>' +
+      '<div><h3>2 · Working hours</h3><p>A printer marked <b>unattended</b> gets 24 hours a day. Uncheck it and the plan only books work inside its start and end hours, and a print longer than that window is flagged rather than pretended away.</p></div>' +
+      '<div><h3>3 · The queue is the schedule</h3><p>Jobs run first come, first served, per printer. Change the order with ▲▼ or by typing a position number, and the 15-day plan redraws immediately. Anything that will finish after its deadline turns red at the top of the page.</p></div>' +
+      '<div><h3>4 · Pinning</h3><p>Set <b>Pin to day</b> on a job that has to run on a specific date. Pinned jobs claim their slot first and the rest of the queue flows around them. If a pin overbooks a day past the printer\'s hours, that day is marked <b>over</b> and you get a warning naming the printer, the date and the hours.</p></div>' +
+      '<div><h3>5 · Quotes</h3><p>Pick a client in the header dropdown to filter the queue to their jobs, then press <b>Quote</b> for a printable one-page quote: line items, per-unit price, filament and machine totals, ready-by date. <code>Print / PDF</code> prints just the quote.</p></div>' +
+      '<div><h3>Your data</h3><p id="help-data"></p></div>' +
+    '</div>' +
+    '<div class="mfoot"><span style="flex:1"></span><button class="btn primary" id="btn-close2">Got it</button></div>' +
+    '</div></div>';
+  document.getElementById("help-data").textContent = db
+    ? "Stored with this page, so it follows you across devices and anyone you share the link with sees the same queue."
+    : ("Stored in this browser only. It survives reloads on this machine, but it does not sync anywhere and clearing site data clears the queue." +
+       (document.getElementById("btn-backup") ? " Press Backup now and then to download a JSON copy, and Restore to load one back." : ""));
+  document.getElementById("close-x").onclick = closeModal;
+  document.getElementById("btn-close2").onclick = closeModal;
+  document.getElementById("scrim").onclick = function (ev) { if (ev.target.id === "scrim") closeModal(); };
+}
+
+/* ── persistence ────────────────────────────────────── */
+var LS = "spool-queue-v1";
+function localSave() { try { localStorage.setItem(LS, JSON.stringify({ settings: settings, tasks: tasks })); } catch (e) { } }
+function localLoad() {
+  try {
+    var raw = localStorage.getItem(LS); if (!raw) return false;
+    var o = JSON.parse(raw);
+    if (o && o.settings) settings = Object.assign(clone(DEFAULTS), o.settings);
+    if (o && o.tasks) tasks = o.tasks.map(migrate);
+    return true;
+  } catch (e) { return false; }
+}
+function save(list) {
+  if (db) { (list || []).forEach(function (t) { db.doc("jobs/" + t.id).set(clone(t)).catch(warnWrite); }); }
+  else localSave();
+}
+function remove(id) { if (db) db.doc("jobs/" + id).delete().catch(warnWrite); else localSave(); }
+function saveSettings() { if (db) db.doc("config/settings").set(clone(settings)).catch(warnWrite); else localSave(); }
+function warnWrite(e) {
+  var l = document.getElementById("sync-label");
+  if (l) { l.textContent = (e && e.code === "quota_exceeded") ? "store full" : "save failed"; document.getElementById("sync-dot").classList.add("local"); }
+}
+function setSync(state) {
+  var dot = document.getElementById("sync-dot"), lab = document.getElementById("sync-label");
+  if (state === "db") { dot.classList.remove("local"); lab.textContent = "synced"; }
+  else { dot.classList.add("local"); lab.textContent = "this browser only"; }
+}
+
+async function boot() {
+  render();
+  var got = null;
+  try { got = await window.claude.use("db"); } catch (e) { got = null; }
+  if (!got) { db = null; localLoad(); setSync("local"); render(); return; }
+  db = got; setSync("db");
+  db.doc("config/settings").onSnapshot(function (snap) {
+    if (snap.exists) { settings = Object.assign(clone(DEFAULTS), snap.data()); render(); }
+    else { saveSettings(); }
+  }, function () { });
+  db.collection("jobs").onSnapshot(function (snap) {
+    tasks = snap.docs.map(function (dd) { var o = dd.data(); o.id = dd.id; return migrate(o); });
+    tasks.forEach(function (t, i) { if (typeof t.order !== "number") t.order = (i + 1) * 10; });
+    render();
+  }, function () { setSync("local"); });
+}
+
+/* ── chrome ─────────────────────────────────────────── */
+document.getElementById("btn-new").onclick = function () { openTask(null); };
+document.getElementById("btn-settings").onclick = openSettings;
+document.getElementById("btn-quote").onclick = openQuote;
+document.getElementById("btn-help").onclick = openHelp;
+document.getElementById("client-filter").onchange = function (e) { clientFilter = e.target.value; render(); };
+document.getElementById("show-done").onchange = function (e) { showDone = e.target.checked; render(); };
+document.getElementById("btn-theme").onclick = function () {
+  var r = document.documentElement, cur = r.getAttribute("data-theme");
+  var dark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  r.setAttribute("data-theme", dark ? "light" : "dark");
+};
+document.addEventListener("keydown", function (e) {
+  if (e.key === "Escape" && document.getElementById("scrim")) closeModal();
+  if (e.key === "n" && !document.getElementById("scrim") && !/input|textarea|select/i.test((document.activeElement || {}).tagName || "")) openTask(null);
+});
+
+boot();
+</script>
+
+<script>
+/* ── standalone build: local backup + first-run help ── */
+(function () {
+  var bar = document.querySelector(".topin");
+  var anchor = document.getElementById("btn-settings");
+
+  var out = document.createElement("button");
+  out.className = "btn"; out.id = "btn-backup"; out.textContent = "Backup"; out.title = "Download a JSON backup of settings and jobs";
+  out.onclick = function () {
+    var blob = new Blob([JSON.stringify({ settings: settings, tasks: tasks }, null, 2)], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "spool-queue-" + iso(new Date()) + ".json";
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  };
+
+  var file = document.createElement("input");
+  file.type = "file"; file.accept = "application/json,.json"; file.style.display = "none";
+  file.onchange = function () {
+    var f = file.files && file.files[0]; if (!f) return;
+    var r = new FileReader();
+    r.onload = function () {
+      try {
+        var o = JSON.parse(r.result);
+        if (o.settings) settings = Object.assign(JSON.parse(JSON.stringify(DEFAULTS)), o.settings);
+        if (o.tasks) tasks = o.tasks;
+        localSave(); render();
+      } catch (e) { alert("That file is not a Spool Queue backup."); }
+      file.value = "";
+    };
+    r.readAsText(f);
+  };
+
+  var inp = document.createElement("button");
+  inp.className = "btn ghost"; inp.textContent = "Restore"; inp.title = "Load a JSON backup";
+  inp.onclick = function () { file.click(); };
+
+  bar.insertBefore(out, anchor);
+  bar.insertBefore(inp, anchor);
+  bar.appendChild(file);
+
+  setTimeout(function () {
+    var fresh = false;
+    try { fresh = !localStorage.getItem("spool-queue-v1"); } catch (e) { fresh = true; }
+    if (fresh && !tasks.length) openHelp();
+  }, 500);
+})();
+</script>
+
+</body>
+</html>
