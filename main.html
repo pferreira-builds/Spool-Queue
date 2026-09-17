@@ -1129,5 +1129,166 @@ boot();
 })();
 </script>
 
+<script>
+/* ── optional: keep the data in a file (File System Access API) ── */
+/*
+ * localStorage stays the hot copy, written on every change exactly as before. When the
+ * user picks a file, that file becomes the source of truth: every change is written
+ * through after a short pause, and on open the newer of the two wins. Point the file at a
+ * Dropbox, Drive or OneDrive folder and the queue follows you across machines, with the
+ * folder's own backup and history, and no server.
+ *
+ * Only where the API exists (Chromium: Chrome, Edge, Brave, Opera). Firefox and Safari
+ * do not have it, and there this block does nothing at all: no button, no change.
+ */
+(function () {
+  if (typeof window.showSaveFilePicker !== "function" || typeof indexedDB === "undefined") return;
+
+  var AT = LS + ":savedAt";        // when localStorage was last written, so the two copies can be compared
+  var DB = "spool-queue-file", STORE = "kv", HANDLE = "handle";
+  var handle = null, lastSeen = 0, timer = null, busy = false;
+
+  /* the handle survives reloads in IndexedDB; localStorage cannot hold it */
+  function idb(fn) {
+    return new Promise(function (res, rej) {
+      var req = indexedDB.open(DB, 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore(STORE); };
+      req.onerror = function () { rej(req.error); };
+      req.onsuccess = function () {
+        var tx = req.result.transaction(STORE, "readwrite"), r;
+        try { r = fn(tx.objectStore(STORE)); } catch (e) { rej(e); return; }   // e.g. a value that cannot be cloned
+        tx.oncomplete = function () { res(r && r.result); };
+        tx.onerror = function () { rej(tx.error); };
+      };
+    });
+  }
+  function getHandle() { return idb(function (s) { return s.get(HANDLE); }).catch(function () { return null; }); }
+  function putHandle(h) { return idb(function (s) { return s.put(h, HANDLE); }); }
+  function delHandle() { return idb(function (s) { return s.delete(HANDLE); }).catch(function () { }); }
+
+  /* the button and the label, next to the existing sync indicator */
+  var btn = document.createElement("button");
+  btn.className = "btn ghost"; btn.id = "btn-file";
+  var anchor = document.getElementById("btn-settings");
+  anchor.parentNode.insertBefore(btn, anchor);
+  var dot = document.getElementById("sync-dot"), lab = document.getElementById("sync-label");
+  var state = "off";
+  function show(s, msg) {
+    state = s;
+    if (s === "off") { btn.textContent = "Keep a file"; btn.title = "Also keep the queue in a JSON file you choose. Put it in a synced folder and it follows you across machines."; }
+    else if (s === "reconnect") { btn.textContent = "Reconnect file"; btn.title = "The browser needs you to allow the file again this session."; }
+    else { btn.textContent = "Stop file"; btn.title = "Stop writing to the file. Nothing is deleted."; }
+    if (s === "on") { dot.classList.remove("local"); lab.textContent = "file · " + (handle && handle.name || "spool-queue.json"); }
+    else if (s === "reconnect") { dot.classList.add("local"); lab.textContent = "file: reconnect"; }
+    else if (s === "error") { dot.classList.add("local"); lab.textContent = msg || "file: save failed"; }
+    else { dot.classList.add("local"); lab.textContent = "this browser only"; }
+  }
+
+  function stamp(t) { try { localStorage.setItem(AT, String(t || Date.now())); } catch (e) { } }
+  function localAt() { try { return Number(localStorage.getItem(AT)) || 0; } catch (e) { return 0; } }
+
+  async function allowed(h, ask) {
+    if (!h.queryPermission) return true;
+    var p = await h.queryPermission({ mode: "readwrite" });
+    if (p === "granted") return true;
+    if (ask && h.requestPermission) p = await h.requestPermission({ mode: "readwrite" });
+    return p === "granted";
+  }
+  async function readFile(h) {
+    var text = await (await h.getFile()).text();
+    if (!text.trim()) return null;
+    var o = JSON.parse(text);
+    if (!o || typeof o !== "object" || !o.settings) throw new Error("not a Spool Queue file");
+    return o;
+  }
+  function adopt(o) {
+    settings = Object.assign(clone(DEFAULTS), o.settings);
+    tasks = (o.tasks || []).map(migrate);
+    lastSeen = o.savedAt || 0;
+    localStorageWrite(); stamp(lastSeen); render();
+  }
+  async function writeNow() {
+    if (!handle || busy) return;
+    busy = true;
+    try {
+      if (!(await allowed(handle, false))) { show("reconnect"); return; }
+      // Re-read before writing: another machine may have written through a synced folder
+      // since we last looked. If the file is newer than what this page knows, take it
+      // rather than overwrite it.
+      var theirs = null;
+      try { theirs = await readFile(handle); } catch (e) { /* unreadable: ours will replace it */ }
+      if (theirs && theirs.savedAt && theirs.savedAt > lastSeen && theirs.savedAt > localAt()) { adopt(theirs); show("on"); return; }
+      var now = Date.now();
+      var w = await handle.createWritable();      // a swap file, committed on close: a crash mid-write cannot truncate the data
+      await w.write(JSON.stringify({ settings: settings, tasks: tasks, savedAt: now }, null, 2));
+      await w.close();
+      lastSeen = now; stamp(now); show("on");
+    } catch (e) {
+      show("error", (e && e.name === "NotAllowedError") ? "file: reconnect" : "file: save failed");
+    } finally { busy = false; }
+  }
+  function schedule() { clearTimeout(timer); timer = setTimeout(writeNow, 400); }
+
+  /* on open: the newer copy wins */
+  async function reconcile() {
+    var theirs = null;
+    try { theirs = await readFile(handle); } catch (e) { show("error", "file: unreadable"); return; }
+    if (theirs && (theirs.savedAt || 0) > localAt()) { adopt(theirs); show("on"); }
+    else { await writeNow(); }
+  }
+
+  /* every save the app makes already goes to localStorage; from here it also goes to the file */
+  var localStorageWrite = localSave;
+  localSave = function () { localStorageWrite(); stamp(); schedule(); };
+
+  var pick = function () {
+    return window.showSaveFilePicker({
+      suggestedName: "spool-queue.json",
+      types: [{ description: "Spool Queue data", accept: { "application/json": [".json"] } }],
+    });
+  };
+  async function link() {
+    var h;
+    try { h = await pick(); } catch (e) { return; }         // cancelled
+    try { await putHandle(h); } catch (e) { }                // still works for this session
+    handle = h; lastSeen = 0;
+    await reconcile();
+  }
+  async function unlink() {
+    handle = null; await delHandle(); show("off");
+  }
+  btn.onclick = function () {
+    if (state === "off") link();
+    else if (state === "reconnect") allowed(handle, true).then(function (ok) { if (ok) reconcile(); });
+    else unlink();
+  };
+
+  /* help text, when the help opens with a file linked */
+  var openHelpBefore = openHelp;
+  openHelp = function () {
+    openHelpBefore();
+    var p = document.getElementById("help-data");
+    if (p && state === "on") p.textContent = "Kept in this browser and in " + (handle && handle.name || "your file") + ". Every change is written to the file; put it in a synced folder and the same queue opens on any machine that points at it.";
+  };
+  // The "?" button took a reference to the original when the page started, so it is
+  // pointed at the wrapper here; the keyboard and first-run paths call openHelp by name.
+  document.getElementById("btn-help").onclick = openHelp;
+
+  show("off");
+  getHandle().then(async function (h) {
+    if (!h) return;
+    handle = h;
+    if (await allowed(h, false)) reconcile(); else show("reconnect");
+  });
+
+  /* for tests: the picker can be replaced, and the state read */
+  window.__spoolFile = {
+    setPicker: function (fn) { pick = fn; },
+    link: link, unlink: unlink, writeNow: writeNow,
+    state: function () { return { state: state, name: handle && handle.name, lastSeen: lastSeen }; },
+  };
+})();
+</script>
+
 </body>
 </html>
