@@ -121,6 +121,15 @@ So: press **Backup** now and then. It downloads a JSON file with all your settin
 jobs. **Restore** loads one back, on any machine. That file is also how you move to a new
 computer, and how you keep a copy before doing anything drastic.
 
+**Or let it keep a file for you.** In Chrome, Edge, Brave or Opera there is a **Keep a
+file** button in the top bar. Pick a JSON file once and every change is written to it as
+you go, on top of the browser copy. When you open the page, the newer of the two wins.
+Put that file in a Dropbox, Drive or OneDrive folder and the same queue opens on any
+machine that points at it, with the folder's own backup and version history, and still
+no server and no account. The browser asks you to allow the file again each session
+(one click on **Reconnect file**). Firefox and Safari do not have this feature yet, so
+there the button does not appear and nothing changes.
+
 Finished jobs stay in the list forever. Tick **show finished** under the queue to see
 them, along with what you charged.
 
@@ -133,7 +142,7 @@ them, along with what you charged.
 
 ## Notes
 
-- Works in any current browser. Chrome, Firefox, Safari, Edge.
+- Works in any current browser. Chrome, Firefox, Safari, Edge. Keeping a file is Chromium only for now.
 - The interface follows your system light/dark setting; the ◐ button overrides it.
 - Fonts load from Google Fonts when you are online, and fall back to your system fonts
   when you are not. Nothing else is fetched, and nothing is sent anywhere.
